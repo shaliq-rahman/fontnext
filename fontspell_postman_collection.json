@@ -1,0 +1,513 @@
+{
+  "info": {
+    "name": "Fontspell Backend API",
+    "description": "Fontspell FastAPI backend collection for Apidog. Run 'Auth > Login' first to populate {{access_token}} and {{refresh_token}} automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "fontspell-backend-collection"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "customer_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "font_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "sale_id",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@fontspell.com\",\n  \"password\": \"Admin@123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login", ""]
+            },
+            "description": "Log in with email and password. Returns access + refresh tokens. Test script auto-saves tokens to collection variables."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  pm.collectionVariables.set('access_token', data.access);",
+                  "  pm.collectionVariables.set('refresh_token', data.refresh);",
+                  "  console.log('Tokens saved to collection variables');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/refresh/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "refresh", ""]
+            },
+            "description": "Exchange a valid refresh token for a new access token."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  pm.collectionVariables.set('access_token', data.access);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/me/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "me", ""]
+            },
+            "description": "Returns the currently authenticated user."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "logout", ""]
+            },
+            "description": "Logout (stub; refresh token blacklist not implemented)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Fonts",
+      "item": [
+        {
+          "name": "List Fonts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/fonts/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "fonts", ""]
+            }
+          }
+        },
+        {
+          "name": "Create Font",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Arial Pro\",\n  \"price\": 1200.0,\n  \"weight\": 400.0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/fonts/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "fonts", ""]
+            },
+            "description": "Create a font. Rejects duplicate name."
+          }
+        },
+        {
+          "name": "Get Font",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/fonts/{{font_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "fonts", "{{font_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Update Font (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Arial Pro\",\n  \"price\": 1500.0,\n  \"weight\": 500.0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/fonts/{{font_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "fonts", "{{font_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Patch Font",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 1350.0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/fonts/{{font_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "fonts", "{{font_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Delete Font",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/fonts/{{font_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "fonts", "{{font_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Font Customers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/fonts/{{font_id}}/customers/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "fonts", "{{font_id}}", "customers", ""]
+            },
+            "description": "Customers who have purchased this font."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Customers",
+      "item": [
+        {
+          "name": "List Customers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/customers/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "customers", ""],
+              "query": [
+                { "key": "search", "value": "john", "disabled": true },
+                { "key": "phone", "value": "9999999999", "disabled": true },
+                { "key": "email", "value": "john@test.com", "disabled": true },
+                { "key": "exclude_font_id", "value": "5", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Customer By Phone",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/customers/by-phone/?phone=9999999999",
+              "host": ["{{base_url}}"],
+              "path": ["api", "customers", "by-phone", ""],
+              "query": [
+                { "key": "phone", "value": "9999999999" }
+              ]
+            },
+            "description": "Searches both phone and phone2. Returns customer with their fonts."
+          }
+        },
+        {
+          "name": "Create Customer",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"phone\": \"9999999999\",\n  \"phone2\": \"8888888888\",\n  \"email\": \"john@test.com\",\n  \"address\": \"Dubai\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/customers/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "customers", ""]
+            },
+            "description": "Rejects duplicate email/phone/phone2."
+          }
+        },
+        {
+          "name": "Get Customer",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/customers/{{customer_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "customers", "{{customer_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Update Customer (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"phone\": \"9999999999\",\n  \"phone2\": \"8888888888\",\n  \"email\": \"john@test.com\",\n  \"address\": \"Abu Dhabi\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/customers/{{customer_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "customers", "{{customer_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Patch Customer",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"address\": \"Sharjah\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/customers/{{customer_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "customers", "{{customer_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Delete Customer",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/customers/{{customer_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "customers", "{{customer_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Customer Fonts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/customers/{{customer_id}}/fonts/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "customers", "{{customer_id}}", "fonts", ""]
+            }
+          }
+        },
+        {
+          "name": "Assign Fonts To Customer",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"font_ids\": [1, 2, 3]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/customers/{{customer_id}}/assign-fonts/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "customers", "{{customer_id}}", "assign-fonts", ""]
+            },
+            "description": "Creates Sale rows for newly assigned fonts. Skips fonts already assigned. price_at_sale copied from current font price."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sales",
+      "item": [
+        {
+          "name": "List Sales",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", ""]
+            }
+          }
+        },
+        {
+          "name": "Create Sale",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer\": 1,\n  \"font\": 1,\n  \"quantity\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sales/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Sale",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/{{sale_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "{{sale_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Today Sales Count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/today/count/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "today", "count", ""]
+            }
+          }
+        },
+        {
+          "name": "Total Sales Count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/total/count/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "total", "count", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Dashboard Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/summary/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard", "summary", ""]
+            },
+            "description": "today_sales_count, total_sales_count, total_customers, total_fonts."
+          }
+        },
+        {
+          "name": "Trending Fonts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/trending-fonts/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard", "trending-fonts", ""]
+            },
+            "description": "Top-selling fonts (limit 10)."
+          }
+        }
+      ]
+    }
+  ]
+}

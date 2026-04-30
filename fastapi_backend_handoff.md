@@ -1,14 +1,14 @@
-# Fontspell Django Backend Handoff
+# Fontspell FastAPI Backend Handoff
 
 ## Project Summary
-Fontspell currently uses Firebase Authentication and Cloud Firestore directly from the Flutter client. This causes platform-specific issues, especially on Windows. The backend needs to be moved to Django so Flutter becomes a client-only application for Android, iOS, macOS, and Windows.
+Fontspell currently uses Firebase Authentication and Cloud Firestore directly from the Flutter client. This causes platform-specific issues, especially on Windows. The backend has been moved to FastAPI so Flutter becomes a client-only application for Android, iOS, macOS, and Windows.
 
-This document is the backend scope and API handoff for the Django developer.
+This document is the backend scope and API handoff for the FastAPI developer.
 
 ## Objective
-Build a Django REST API backend that fully replaces Firebase usage in the Flutter app.
+Build a FastAPI REST API backend that fully replaces Firebase usage in the Flutter app.
 
-The Django backend will handle:
+The FastAPI backend will handle:
 - authentication
 - fonts management
 - customers management
@@ -18,34 +18,59 @@ The Django backend will handle:
 - validation and business rules
 
 The Flutter app will:
-- send HTTP requests to Django
+- send HTTP requests to FastAPI
 - store JWT tokens locally
 - stop using Firebase Auth and Firestore
 
-## Recommended Backend Stack
-- Django
-- Django REST Framework
-- PostgreSQL
-- djangorestframework-simplejwt
-- django-cors-headers if needed
-- drf-spectacular optional for OpenAPI/Swagger
+## Backend Stack
+- FastAPI
+- SQLAlchemy 2.0 (async)
+- PostgreSQL (asyncpg driver)
+- Alembic (migrations)
+- PyJWT (JWT auth)
+- passlib + bcrypt (password hashing)
+- pydantic v2 (schemas/validation)
+- uvicorn (ASGI server)
+- pydantic-settings (env config)
 
-## Suggested Django Apps
-- `accounts`
-- `fonts`
-- `customers`
-- `sales`
-- `dashboard`
+## Project Layout
+```
+app/
+  api/
+    routes/
+      auth.py
+      fonts.py
+      customers.py
+      sales.py
+      dashboard.py
+      __init__.py        # api_router aggregator
+    dependencies.py      # get_current_user, etc.
+  core/
+    config.py            # settings
+    security.py          # password hashing, JWT helpers
+  db/
+    base.py              # Base = declarative_base()
+    database.py          # async engine + get_db dependency
+    models.py            # SQLAlchemy models
+  schemas/
+    auth.py
+    font.py
+    customer.py
+    sale.py
+  main.py                # FastAPI app entrypoint
+alembic/
+tests/
+```
 
 ## Core Data Model
 
 ### 1. User
-Use Django `User` or a custom user model.
+SQLAlchemy model in `app/db/models.py`.
 
 Required fields:
 - `id`
 - `email`
-- `password`
+- `password` (hashed via bcrypt)
 - `is_active`
 - `is_staff`
 
@@ -82,8 +107,8 @@ Rules:
 ### 4. Sale
 Fields:
 - `id`
-- `customer` as ForeignKey to customer
-- `font` as ForeignKey to font
+- `customer_id` as ForeignKey to customer
+- `font_id` as ForeignKey to font
 - `quantity`
 - `price_at_sale`
 - `sale_date`
@@ -98,18 +123,18 @@ Do not make `fontIds` inside customer the source of truth.
 Use the `Sale` table as the real relationship between customer and font. This will make dashboard, reporting, and history much easier and more reliable.
 
 ## Authentication Requirements
-Use JWT authentication.
-
-Recommended package:
-- `djangorestframework-simplejwt`
+Use JWT authentication via PyJWT.
 
 Required behavior:
 - login with email and password
-- return access and refresh tokens
+- return access and refresh tokens (typed via `type` claim: `access` / `refresh`)
 - authenticated endpoint to fetch current user
 - token refresh endpoint
+- `get_current_user` dependency injected into protected routes via `Depends`
 
 ## API Specification
+
+All routes are mounted under `/api` (set in `app/main.py` via `app.include_router(api_router, prefix="/api")`).
 
 ### Auth APIs
 
@@ -166,7 +191,7 @@ Response:
 
 #### `POST /api/auth/logout/`
 Optional:
-- only if refresh token blacklisting is implemented
+- only if refresh token blacklisting is implemented (e.g., Redis or DB table)
 
 ## Font APIs
 
@@ -420,7 +445,7 @@ Response:
 ```
 
 ## Validation Rules
-Django must enforce the following:
+FastAPI/SQLAlchemy must enforce the following:
 - font name must be unique
 - customer email must be unique
 - customer phone must be unique
@@ -430,42 +455,34 @@ Django must enforce the following:
 - `price_at_sale` should be stored in sale record
 
 ## Permissions
-Public endpoints:
+Public endpoints (no `get_current_user` dependency):
 - `POST /api/auth/login/`
 - `POST /api/auth/refresh/`
 
-Protected endpoints:
+Protected endpoints (require `Depends(get_current_user)`):
 - all fonts APIs
 - all customer APIs
 - all sales APIs
 - all dashboard APIs
 - `GET /api/auth/me/`
 
-## Recommended Serializers
-- `UserSerializer`
-- `LoginSerializer`
-- `FontSerializer`
-- `CustomerSerializer`
-- `CustomerDetailSerializer`
-- `SaleSerializer`
-- `DashboardSummarySerializer`
-- `TrendingFontSerializer`
+## Pydantic Schemas (`app/schemas/`)
+- `UserOut`, `UserLogin`, `Token`, `TokenRefresh` — `auth.py`
+- `FontBase`, `FontCreate`, `FontUpdate`, `FontOut` — `font.py`
+- `CustomerBase`, `CustomerCreate`, `CustomerUpdate`, `CustomerOut`, `CustomerDetailOut`, `AssignFontsRequest` — `customer.py`
+- `SaleCreate`, `SaleOut`, `SaleCountOut`, `DashboardSummaryOut`, `TrendingFontOut` — `sale.py`
 
-## Recommended Views or ViewSets
-- auth login view
-- auth me view
-- token refresh view
-- font CRUD viewset
-- customer CRUD viewset
-- customer by-phone lookup view
-- customer assign-fonts action
-- sales list/detail views
-- dashboard summary view
-- dashboard trending fonts view
-- font customers view
+## Route Handlers (`app/api/routes/`)
+- `auth.py` — login, refresh, me, logout
+- `fonts.py` — font CRUD + `/{id}/customers/`
+- `customers.py` — customer CRUD + `by-phone/`, `/{id}/fonts/`, `/{id}/assign-fonts/`
+- `sales.py` — sale list/detail/create + `today/count/`, `total/count/`
+- `dashboard.py` — `summary/`, `trending-fonts/`
+
+Each route uses `AsyncSession` from `Depends(get_db)` and SQLAlchemy 2.0-style `select()` queries.
 
 ## Database Recommendations
-Use PostgreSQL.
+Use PostgreSQL with the `asyncpg` driver. Manage schema via Alembic.
 
 Recommended indexes:
 - `font.name`
@@ -477,9 +494,9 @@ Recommended indexes:
 - `sale.font_id`
 
 ## Performance Notes
-Use:
-- `select_related`
-- `prefetch_related`
+Use SQLAlchemy loader options:
+- `selectinload` (async-friendly equivalent of `prefetch_related`)
+- `joinedload` (equivalent of `select_related`)
 
 Avoid N+1 queries in:
 - customer detail with fonts
@@ -487,6 +504,8 @@ Avoid N+1 queries in:
 - customers by font
 
 ## Test Requirements
+Use `pytest` + `pytest-asyncio` + `httpx.AsyncClient`. Override the `get_db` dependency to bind to an ephemeral test database.
+
 Create tests for:
 - login success
 - login failure
@@ -501,17 +520,17 @@ Create tests for:
 - dashboard summary
 - trending font calculation
 
-## Expected Delivery From Django Developer
-- Django project with app structure
-- models
-- migrations
-- serializers
-- views
-- urls
-- JWT auth setup
-- PostgreSQL configuration
-- API tests
-- API documentation or Swagger if enabled
+## Expected Delivery
+- FastAPI project with the `app/` layout above
+- SQLAlchemy models
+- Alembic migrations
+- Pydantic schemas
+- Route handlers
+- `api_router` wiring under `/api`
+- JWT auth setup (PyJWT) + `get_current_user` dependency
+- PostgreSQL configuration via `pydantic-settings`
+- API tests (pytest-asyncio)
+- OpenAPI/Swagger UI auto-generated at `/api/docs`
 
 ## High Priority Endpoints To Build First
 1. `POST /api/auth/login/`
@@ -539,5 +558,5 @@ Current Firebase-dependent Flutter files:
 - `/Users/fahad/freelances/fontspell/lib/view/splash_screen.dart`
 - `/Users/fahad/freelances/fontspell/lib/view/logout_dialog.dart`
 
-## Final Instruction To Backend Developer
-Build the Django backend so Flutter no longer depends on Firebase Auth or Firestore for any production feature. All business logic should be owned by Django APIs and PostgreSQL.
+## Final Instruction
+Build the FastAPI backend so Flutter no longer depends on Firebase Auth or Firestore for any production feature. All business logic should be owned by FastAPI routes and PostgreSQL.
