@@ -43,3 +43,6 @@ coverage.xml
 # Database
 *.sqlite3
 local.env
+
+# API Documentation
+API_REFERENCE.md
