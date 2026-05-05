@@ -31,9 +31,8 @@ jobs:
             git checkout -f main
             git reset --hard origin/main
             
-            # Install dependencies and migrate
+            # Install dependencies
             /root/backend/venv/bin/pip install -r requirements.txt
-            /root/backend/venv/bin/alembic upgrade head
             # Restart the service. Replace 'fontnext' with your actual systemd service name.
             # sudo systemctl restart fontnext
             # If you are using pm2:
