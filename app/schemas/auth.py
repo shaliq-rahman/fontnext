@@ -14,6 +14,10 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+
 class TokenRefresh(BaseModel):
     refresh: str
 

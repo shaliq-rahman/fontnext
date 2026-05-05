@@ -1,0 +1,29 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /root/backend/fontnext
+            git pull origin main
+            /root/backend/venv/bin/pip install -r requirements.txt
+            /root/backend/venv/bin/alembic upgrade head
+            # Restart the service. Replace 'fontnext' with your actual systemd service name.
+            # sudo systemctl restart fontnext
+            # If you are using pm2:
+            # pm2 restart fontnext

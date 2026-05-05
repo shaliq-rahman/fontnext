@@ -3,8 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.database import get_db
 from app.db.models import User
-from app.schemas.auth import Token, UserLogin, UserOut, TokenRefresh
-from app.core.security import verify_password, create_access_token, create_refresh_token
+from app.schemas.auth import Token, UserLogin, UserOut, TokenRefresh, UserCreate
+from app.core.security import verify_password, create_access_token, create_refresh_token, get_password_hash
 from app.api.dependencies import get_current_user
 from app.core.config import settings
 import jwt
@@ -80,3 +80,27 @@ async def logout():
     # we return a success status. If blacklisting is needed, a database table
     # or Redis should be configured.
     return {"message": "Successfully logged out"}
+
+@router.post("/create-superadmin/", response_model=UserOut)
+async def create_superadmin(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+    # Check if user already exists
+    result = await db.execute(select(User).where(User.email == user_in.email))
+    user = result.scalars().first()
+    if user:
+        raise HTTPException(
+            status_code=400,
+            detail="A user with this email already exists.",
+        )
+    
+    # Create new superadmin
+    new_user = User(
+        email=user_in.email,
+        password=get_password_hash(user_in.password),
+        is_staff=True,
+        is_superuser=True,
+        is_active=True
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return new_user

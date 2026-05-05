@@ -12,6 +12,7 @@ class User(Base):
     password: Mapped[str] = mapped_column(String, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_staff: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Font(Base):
