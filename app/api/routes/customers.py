@@ -6,6 +6,7 @@ from app.db.database import get_db
 from app.db.models import Customer, Font, Sale, User
 from app.schemas.customer import CustomerCreate, CustomerUpdate, CustomerOut, CustomerDetailOut, AssignFontsRequest
 from app.schemas.font import FontOut
+from app.schemas.common import success_response
 from app.api.dependencies import get_current_user
 import logging
 
@@ -27,7 +28,7 @@ async def check_customer_duplicates(db: AsyncSession, email: str = None, phone: 
     stmt = select(Customer).where(or_(*conditions))
     if exclude_id:
         stmt = stmt.where(Customer.id != exclude_id)
-        
+
     result = await db.execute(stmt)
     duplicates = result.scalars().all()
     for d in duplicates:
@@ -38,7 +39,7 @@ async def check_customer_duplicates(db: AsyncSession, email: str = None, phone: 
         if phone2 and d.phone2 == phone2:
             raise HTTPException(status_code=400, detail="Customer with this phone2 already exists")
 
-@router.get("/", response_model=List[CustomerOut])
+@router.get("/")
 async def list_customers(
     search: Optional[str] = None,
     phone: Optional[str] = None,
@@ -48,7 +49,7 @@ async def list_customers(
     current_user: User = Depends(get_current_user)
 ):
     stmt = select(Customer)
-    
+
     if search:
         stmt = stmt.where(Customer.name.ilike(f"%{search}%"))
     if phone:
@@ -60,9 +61,11 @@ async def list_customers(
         stmt = stmt.where(Customer.id.notin_(subq))
 
     result = await db.execute(stmt)
-    return result.scalars().all()
+    customers = result.scalars().all()
+    data = [CustomerOut.model_validate(c).model_dump(mode="json") for c in customers]
+    return success_response(data=data, message="Customers retrieved successfully")
 
-@router.get("/by-phone/", response_model=CustomerDetailOut)
+@router.get("/by-phone/")
 async def get_customer_by_phone(
     phone: str = Query(..., description="Phone number to search for"),
     db: AsyncSession = Depends(get_db),
@@ -73,121 +76,124 @@ async def get_customer_by_phone(
     customer = result.scalars().first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-        
+
     fonts_stmt = select(Font).join(Sale, Sale.font_id == Font.id).where(Sale.customer_id == customer.id)
     fonts_result = await db.execute(fonts_stmt)
-    
+
     response = CustomerDetailOut.model_validate(customer)
     response.fonts = fonts_result.scalars().all()
-    return response
+    return success_response(data=response.model_dump(mode="json"), message="Customer retrieved successfully")
 
-@router.post("/", response_model=CustomerOut, status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_customer(
     customer: CustomerCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     await check_customer_duplicates(db, email=customer.email, phone=customer.phone, phone2=customer.phone2)
-    
+
     new_customer = Customer(**customer.model_dump())
     db.add(new_customer)
     await db.commit()
     await db.refresh(new_customer)
-    return new_customer
+    data = CustomerOut.model_validate(new_customer).model_dump(mode="json")
+    return success_response(data=data, message="Customer created successfully")
 
-@router.get("/{customer_id}/", response_model=CustomerOut)
+@router.get("/{customer_id}/")
 async def get_customer(customer_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = await db.execute(select(Customer).where(Customer.id == customer_id))
     customer = result.scalars().first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-    return customer
-    
-@router.get("/{customer_id}/fonts/", response_model=List[FontOut])
+    data = CustomerOut.model_validate(customer).model_dump(mode="json")
+    return success_response(data=data, message="Customer retrieved successfully")
+
+@router.get("/{customer_id}/fonts/")
 async def get_customer_fonts(customer_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     stmt = select(Font).join(Sale, Sale.font_id == Font.id).where(Sale.customer_id == customer_id)
     result = await db.execute(stmt)
-    return result.scalars().all()
+    fonts = result.scalars().all()
+    data = [FontOut.model_validate(f).model_dump(mode="json") for f in fonts]
+    return success_response(data=data, message="Customer fonts retrieved successfully")
 
-@router.patch("/{customer_id}/", response_model=CustomerOut)
+@router.patch("/{customer_id}/")
 async def partial_update_customer(customer_id: int, customer_update: CustomerUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = await db.execute(select(Customer).where(Customer.id == customer_id))
     customer = result.scalars().first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-        
+
     update_data = customer_update.model_dump(exclude_unset=True)
     await check_customer_duplicates(
-        db, 
-        email=update_data.get("email"), 
-        phone=update_data.get("phone"), 
-        phone2=update_data.get("phone2"), 
-        exclude_id=customer_id
+        db,
+        email=update_data.get("email"),
+        phone=update_data.get("phone"),
+        phone2=update_data.get("phone2"),
+        exclude_id=customer_id,
     )
-    
+
     for key, value in update_data.items():
         setattr(customer, key, value)
-        
+
     await db.commit()
     await db.refresh(customer)
-    return customer
+    data = CustomerOut.model_validate(customer).model_dump(mode="json")
+    return success_response(data=data, message="Customer updated successfully")
 
-@router.put("/{customer_id}/", response_model=CustomerOut)
+@router.put("/{customer_id}/")
 async def update_customer(customer_id: int, customer_update: CustomerCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = await db.execute(select(Customer).where(Customer.id == customer_id))
     customer = result.scalars().first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-        
+
     await check_customer_duplicates(
-        db, 
-        email=customer_update.email, 
-        phone=customer_update.phone, 
-        phone2=customer_update.phone2, 
-        exclude_id=customer_id
+        db,
+        email=customer_update.email,
+        phone=customer_update.phone,
+        phone2=customer_update.phone2,
+        exclude_id=customer_id,
     )
-    
+
     for key, value in customer_update.model_dump().items():
         setattr(customer, key, value)
-        
+
     await db.commit()
     await db.refresh(customer)
-    return customer
+    data = CustomerOut.model_validate(customer).model_dump(mode="json")
+    return success_response(data=data, message="Customer updated successfully")
 
-@router.delete("/{customer_id}/", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{customer_id}/")
 async def delete_customer(customer_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = await db.execute(select(Customer).where(Customer.id == customer_id))
     customer = result.scalars().first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-        
+
     await db.delete(customer)
     await db.commit()
-    return None
+    return success_response(data=None, message="Customer deleted successfully")
 
 @router.post("/{customer_id}/assign-fonts/")
 async def assign_fonts(customer_id: int, request: AssignFontsRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Verify customer exists
     result = await db.execute(select(Customer).where(Customer.id == customer_id))
     customer = result.scalars().first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-        
-    # Get existing sales for this customer and those fonts to prevent duplicate assignment (unless repeats are allowed, but docs say "do not duplicate existing assignment")
+
     existing_sales_stmt = select(Sale.font_id).where(
         and_(Sale.customer_id == customer_id, Sale.font_id.in_(request.font_ids))
     )
     existing_sales_result = await db.execute(existing_sales_stmt)
     existing_font_ids = set(existing_sales_result.scalars().all())
-    
+
     new_font_ids = set(request.font_ids) - existing_font_ids
-    
+
     if not new_font_ids:
-        return {"message": "All fonts are already assigned to this customer"}
-        
-    # Fetch font prices
+        return success_response(data=None, message="All fonts are already assigned to this customer")
+
     fonts_stmt = select(Font).where(Font.id.in_(new_font_ids))
     fonts_result = await db.execute(fonts_stmt)
     fonts = fonts_result.scalars().all()
-    
+
     new_sales = []
     for font in fonts:
         new_sales.append(
@@ -195,12 +201,12 @@ async def assign_fonts(customer_id: int, request: AssignFontsRequest, db: AsyncS
                 customer_id=customer_id,
                 font_id=font.id,
                 quantity=1,
-                price_at_sale=font.price
+                price_at_sale=font.price,
             )
         )
-        
+
     if new_sales:
         db.add_all(new_sales)
         await db.commit()
-        
-    return {"message": "Fonts assigned successfully"}
+
+    return success_response(data=None, message="Fonts assigned successfully")
