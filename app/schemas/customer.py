@@ -11,7 +11,7 @@ class CustomerBase(BaseModel):
     address: Optional[str] = None
 
 class CustomerCreate(CustomerBase):
-    pass
+    font_ids: Optional[List[int]] = None
 
 class CustomerUpdate(BaseModel):
     name: Optional[str] = None

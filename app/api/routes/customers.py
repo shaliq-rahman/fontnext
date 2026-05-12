@@ -39,6 +39,39 @@ async def check_customer_duplicates(db: AsyncSession, email: str = None, phone: 
         if phone2 and d.phone2 == phone2:
             raise HTTPException(status_code=400, detail="Customer with this phone2 already exists")
 
+async def _assign_fonts_internal(db: AsyncSession, customer_id: int, font_ids: List[int]):
+    existing_sales_stmt = select(Sale.font_id).where(
+        and_(Sale.customer_id == customer_id, Sale.font_id.in_(font_ids))
+    )
+    existing_sales_result = await db.execute(existing_sales_stmt)
+    existing_font_ids = set(existing_sales_result.scalars().all())
+
+    new_font_ids = set(font_ids) - existing_font_ids
+
+    if not new_font_ids:
+        return 0
+
+    fonts_stmt = select(Font).where(Font.id.in_(new_font_ids))
+    fonts_result = await db.execute(fonts_stmt)
+    fonts = fonts_result.scalars().all()
+
+    new_sales = []
+    for font in fonts:
+        new_sales.append(
+            Sale(
+                customer_id=customer_id,
+                font_id=font.id,
+                quantity=1,
+                price_at_sale=font.price,
+            )
+        )
+
+    if new_sales:
+        db.add_all(new_sales)
+        await db.commit()
+    
+    return len(new_sales)
+
 @router.get("/")
 async def list_customers(
     search: Optional[str] = None,
@@ -90,10 +123,14 @@ async def create_customer(
 ):
     await check_customer_duplicates(db, email=customer.email, phone=customer.phone, phone2=customer.phone2)
 
-    new_customer = Customer(**customer.model_dump())
+    new_customer = Customer(**customer.model_dump(exclude={"font_ids"}))
     db.add(new_customer)
     await db.commit()
     await db.refresh(new_customer)
+
+    if customer.font_ids:
+        await _assign_fonts_internal(db, new_customer.id, customer.font_ids)
+
     data = CustomerOut.model_validate(new_customer).model_dump(mode="json")
     return success_response(data=data, message="Customer created successfully")
 
@@ -179,34 +216,9 @@ async def assign_fonts(customer_id: int, request: AssignFontsRequest, db: AsyncS
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    existing_sales_stmt = select(Sale.font_id).where(
-        and_(Sale.customer_id == customer_id, Sale.font_id.in_(request.font_ids))
-    )
-    existing_sales_result = await db.execute(existing_sales_stmt)
-    existing_font_ids = set(existing_sales_result.scalars().all())
+    assigned_count = await _assign_fonts_internal(db, customer_id, request.font_ids)
 
-    new_font_ids = set(request.font_ids) - existing_font_ids
-
-    if not new_font_ids:
+    if assigned_count == 0:
         return success_response(data=None, message="All fonts are already assigned to this customer")
 
-    fonts_stmt = select(Font).where(Font.id.in_(new_font_ids))
-    fonts_result = await db.execute(fonts_stmt)
-    fonts = fonts_result.scalars().all()
-
-    new_sales = []
-    for font in fonts:
-        new_sales.append(
-            Sale(
-                customer_id=customer_id,
-                font_id=font.id,
-                quantity=1,
-                price_at_sale=font.price,
-            )
-        )
-
-    if new_sales:
-        db.add_all(new_sales)
-        await db.commit()
-
-    return success_response(data=None, message="Fonts assigned successfully")
+    return success_response(data=None, message=f"{assigned_count} fonts assigned successfully")
