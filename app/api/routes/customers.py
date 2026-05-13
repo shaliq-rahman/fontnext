@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_, and_, delete
 from app.db.database import get_db
 from app.db.models import Customer, Font, Sale, User
 from app.schemas.customer import CustomerCreate, CustomerUpdate, CustomerOut, CustomerDetailOut, AssignFontsRequest
@@ -69,8 +69,48 @@ async def _assign_fonts_internal(db: AsyncSession, customer_id: int, font_ids: L
     if new_sales:
         db.add_all(new_sales)
         await db.commit()
-    
+
     return len(new_sales)
+
+async def _replace_fonts_internal(db: AsyncSession, customer_id: int, font_ids: List[int]):
+    target_ids = set(font_ids)
+
+    existing_stmt = select(Sale.font_id).where(Sale.customer_id == customer_id)
+    existing_result = await db.execute(existing_stmt)
+    existing_ids = set(existing_result.scalars().all())
+
+    to_remove = existing_ids - target_ids
+    to_add = target_ids - existing_ids
+
+    if to_remove:
+        await db.execute(
+            delete(Sale).where(
+                and_(Sale.customer_id == customer_id, Sale.font_id.in_(to_remove))
+            )
+        )
+
+    added = 0
+    if to_add:
+        fonts_stmt = select(Font).where(Font.id.in_(to_add))
+        fonts_result = await db.execute(fonts_stmt)
+        fonts = fonts_result.scalars().all()
+        new_sales = [
+            Sale(
+                customer_id=customer_id,
+                font_id=font.id,
+                quantity=1,
+                price_at_sale=font.price,
+            )
+            for font in fonts
+        ]
+        if new_sales:
+            db.add_all(new_sales)
+            added = len(new_sales)
+
+    if to_remove or to_add:
+        await db.commit()
+
+    return {"added": added, "removed": len(to_remove)}
 
 @router.get("/")
 async def list_customers(
@@ -190,11 +230,15 @@ async def update_customer(customer_id: int, customer_update: CustomerCreate, db:
         exclude_id=customer_id,
     )
 
-    for key, value in customer_update.model_dump().items():
+    for key, value in customer_update.model_dump(exclude={"font_ids"}).items():
         setattr(customer, key, value)
 
     await db.commit()
     await db.refresh(customer)
+
+    if customer_update.font_ids is not None:
+        await _replace_fonts_internal(db, customer_id, customer_update.font_ids)
+
     data = CustomerOut.model_validate(customer).model_dump(mode="json")
     return success_response(data=data, message="Customer updated successfully")
 
@@ -216,9 +260,12 @@ async def assign_fonts(customer_id: int, request: AssignFontsRequest, db: AsyncS
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    assigned_count = await _assign_fonts_internal(db, customer_id, request.font_ids)
+    changes = await _replace_fonts_internal(db, customer_id, request.font_ids)
 
-    if assigned_count == 0:
-        return success_response(data=None, message="All fonts are already assigned to this customer")
+    if changes["added"] == 0 and changes["removed"] == 0:
+        return success_response(data=None, message="Customer fonts already match the requested assignment")
 
-    return success_response(data=None, message=f"{assigned_count} fonts assigned successfully")
+    return success_response(
+        data=None,
+        message=f"Fonts updated: {changes['added']} added, {changes['removed']} removed",
+    )
